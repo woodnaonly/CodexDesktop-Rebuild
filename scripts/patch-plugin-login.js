@@ -6,9 +6,11 @@
  * When this object is null (commonly logged-out/offline), early return skips
  * syncing feature enablement and plugin-related features stay disabled.
  *
- * This patch does two things:
+ * This patch does four things:
  * 1) Remove the null early-return and always send a feature override object.
  * 2) Force-enable plugin-related features by default when statsig data is absent.
+ * 3) Stop API-key auth from hiding the Plugins/Apps sidebar entry.
+ * 4) Remove the disabled Plugins sidebar item and its sign-in tooltip.
  *
  * Usage:
  *   node scripts/patch-plugin-login.js [platform]   # Apply (unix/win/omit=all)
@@ -30,6 +32,22 @@ const REPLACEMENTS = [
     find: "function Wxe(e){let t={};for(let n of Hxe){let r=e[n];r!=null&&(t[n]=r)}return t}",
     replace:
       "function Wxe(e){let t={apps:!0,plugins:!0,tool_search:!0,tool_suggest:!0,tool_call_mcp_elicitation:!0};if(e==null)return t;for(let n of Hxe){let r=e[n];r!=null&&(t[n]=r)}return t}",
+  },
+  {
+    id: "force_sidebar_plugins_for_api_key",
+    find: "{authMethod:D}=zp(),O=$f(`533078438`),k=D===`apikey`,A=O&&k",
+    replace: "{authMethod:D}=zp(),O=$f(`533078438`),k=D===`apikey`,A=!1",
+  },
+  {
+    id: "show_plugins_label_for_api_key",
+    find: "ee=Ha({hostId:me})&&!k",
+    replace: "ee=Ha({hostId:me})",
+  },
+  {
+    id: "remove_sidebar_disabled_plugins_tooltip",
+    find: "A?(0,$.jsx)(Lh,{tooltipContent:(0,$.jsx)(Y,{id:`sidebarElectron.pluginsDisabledTooltip`,defaultMessage:`Please sign in with ChatGPT to use plugins`,description:`Tooltip shown when API-key users hover the disabled Plugins nav item in the sidebar`}),side:`right`,sideOffset:20,children:(0,$.jsx)(`div`,{children:(0,$.jsx)(Hb,{icon:fu,onClick:()=>{},disabled:!0,label:(0,$.jsx)(Y,{id:`sidebarElectron.pluginsRouteNavLink`,defaultMessage:`Plugins`,description:`Disabled nav link shown to API-key users under Skills in the sidebar`})})})}):null,",
+    replace: "",
+    assertAbsent: "sidebarElectron.pluginsDisabledTooltip",
   },
 ];
 
@@ -65,18 +83,25 @@ function applyTextReplacements(source, isCheck) {
   const actions = [];
 
   for (const rule of REPLACEMENTS) {
-    if (code.includes(rule.replace)) {
+    if (code.includes(rule.find)) {
+      actions.push({ id: rule.id, status: isCheck ? "match" : "patched" });
+      if (!isCheck) code = code.replace(rule.find, rule.replace);
+      continue;
+    }
+
+    if (rule.replace !== "" && code.includes(rule.replace)) {
       actions.push({ id: rule.id, status: "already_patched" });
       continue;
     }
 
-    if (!code.includes(rule.find)) {
+    {
+      if (rule.assertAbsent && !code.includes(rule.assertAbsent)) {
+        actions.push({ id: rule.id, status: "already_patched" });
+        continue;
+      }
       actions.push({ id: rule.id, status: "not_found" });
       continue;
     }
-
-    actions.push({ id: rule.id, status: isCheck ? "match" : "patched" });
-    if (!isCheck) code = code.replace(rule.find, rule.replace);
   }
 
   return { code, actions };

@@ -127,6 +127,8 @@ module.exports = {
       CompanyName: "OpenAI",
       ProductName: "Codex",
     },
+    // Optional offline packaging support: point to a local Electron zip cache directory.
+    electronZipDir: process.env.ELECTRON_ZIP_DIR || undefined,
   },
   rebuildConfig: {
     ignoreModules: ["better-sqlite3", "node-pty"],
