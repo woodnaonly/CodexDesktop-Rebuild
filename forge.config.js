@@ -2,7 +2,7 @@ const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 const path = require("path");
 const fs = require("fs");
 
-// 平台架构 -> @cometix/codex target triple 映射
+// 平台架构 -> Codex target triple 映射
 const TARGET_TRIPLE_MAP = {
   "darwin-arm64": "aarch64-apple-darwin",
   "darwin-x64": "x86_64-apple-darwin",
@@ -11,17 +11,26 @@ const TARGET_TRIPLE_MAP = {
   "win32-x64": "x86_64-pc-windows-msvc",
 };
 
-// 获取 @cometix/codex vendor 目录下的二进制路径
+// 获取 npm vendor 目录下的二进制路径（优先 @openai/codex，兼容 @cometix/codex）
 function getVendorBinaryPath(platform, arch, subdir, binaryName) {
   const platformArch = `${platform}-${arch}`;
   const targetTriple = TARGET_TRIPLE_MAP[platformArch];
   if (!targetTriple) return null;
 
-  const vendorPath = path.join(
-    __dirname, "node_modules", "@cometix", "codex", "vendor",
-    targetTriple, subdir, binaryName
-  );
-  return fs.existsSync(vendorPath) ? vendorPath : null;
+  const vendorRoots = [
+    // New upstream package layout: @openai/codex-${platform}-${arch}
+    path.join(__dirname, "node_modules", "@openai", `codex-${platformArch}`, "vendor"),
+    // Fallback layout: vendor bundled in @openai/codex package
+    path.join(__dirname, "node_modules", "@openai", "codex", "vendor"),
+    // Legacy cometix package layout
+    path.join(__dirname, "node_modules", "@cometix", "codex", "vendor"),
+  ];
+
+  for (const root of vendorRoots) {
+    const vendorPath = path.join(root, targetTriple, subdir, binaryName);
+    if (fs.existsSync(vendorPath)) return vendorPath;
+  }
+  return null;
 }
 
 // 从 npm vendor 复制二进制到 resources/bin/（确保本地始终为最新）
@@ -52,7 +61,7 @@ function getCodexBinaryPath(platform, arch) {
     return localPath;
   }
 
-  // 路径2: npm @cometix/codex/vendor/（直接回退）
+  // 路径2: npm vendor（@openai/codex 或 @cometix/codex）
   return getVendorBinaryPath(platform, arch, "codex", binaryName);
 }
 
@@ -119,7 +128,9 @@ module.exports = {
       ProductName: "Codex",
     },
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    ignoreModules: ["better-sqlite3", "node-pty"],
+  },
   makers: [
     // macOS DMG
     {
@@ -543,6 +554,8 @@ module.exports = {
       } else {
         console.error(`❌ Codex binary not found for ${platform}-${arch}`);
         console.error(`   Tried: resources/bin/${platform}-${arch}/${codexBinaryName}`);
+        console.error(`   Tried: node_modules/@openai/codex-*/vendor/.../codex/${codexBinaryName}`);
+        console.error(`   Tried: node_modules/@openai/codex/vendor/.../codex/${codexBinaryName}`);
         console.error(`   Tried: node_modules/@cometix/codex/vendor/.../codex/${codexBinaryName}`);
         process.exit(1);
       }

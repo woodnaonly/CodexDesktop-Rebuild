@@ -46,17 +46,35 @@ const TARGET_TRIPLE_MAP = {
   'win32-x64': 'x86_64-pc-windows-msvc',
 };
 
-// 从 npm vendor 同步到 resources/bin/
-const triple = TARGET_TRIPLE_MAP[binDir];
-if (triple) {
-  const vendorPath = path.join(__dirname, '..', 'node_modules', '@cometix', 'codex', 'vendor', triple, 'codex', cliName);
-  if (fs.existsSync(vendorPath)) {
-    const localDir = path.join(__dirname, '..', 'resources', 'bin', binDir);
-    fs.mkdirSync(localDir, { recursive: true });
-    fs.copyFileSync(vendorPath, path.join(localDir, cliName));
-    try { fs.chmodSync(path.join(localDir, cliName), 0o755); } catch {}
-    console.log(`[start-dev] Synced codex binary: vendor → resources/bin/${binDir}/${cliName}`);
+function resolveVendorCliPath(platformArch, binaryName) {
+  const triple = TARGET_TRIPLE_MAP[platformArch];
+  if (!triple) return null;
+
+  const repoRoot = path.join(__dirname, '..');
+  const vendorRoots = [
+    // New upstream package (>= 0.121.0) installs platform package as @openai/codex-${platform}-${arch}
+    path.join(repoRoot, 'node_modules', '@openai', `codex-${platformArch}`, 'vendor'),
+    // Fallback for package layouts that include a local vendor in the main package
+    path.join(repoRoot, 'node_modules', '@openai', 'codex', 'vendor'),
+    // Legacy cometix package
+    path.join(repoRoot, 'node_modules', '@cometix', 'codex', 'vendor'),
+  ];
+
+  for (const root of vendorRoots) {
+    const candidate = path.join(root, triple, 'codex', binaryName);
+    if (fs.existsSync(candidate)) return candidate;
   }
+  return null;
+}
+
+// 从 npm vendor 同步到 resources/bin/
+const vendorPath = resolveVendorCliPath(binDir, cliName);
+if (vendorPath) {
+  const localDir = path.join(__dirname, '..', 'resources', 'bin', binDir);
+  fs.mkdirSync(localDir, { recursive: true });
+  fs.copyFileSync(vendorPath, path.join(localDir, cliName));
+  try { fs.chmodSync(path.join(localDir, cliName), 0o755); } catch {}
+  console.log(`[start-dev] Synced codex binary: vendor → resources/bin/${binDir}/${cliName}`);
 }
 
 const cliPath = localCliPath;
@@ -64,7 +82,7 @@ const cliPath = localCliPath;
 // Verify CLI exists
 if (!fs.existsSync(cliPath)) {
   console.error(`CLI not found at: ${cliPath}`);
-  console.error('Tried: resources/bin/ and node_modules/@cometix/codex/vendor/');
+  console.error('Tried: resources/bin/, node_modules/@openai/codex-*/vendor/, node_modules/@openai/codex/vendor/, node_modules/@cometix/codex/vendor/');
   process.exit(1);
 }
 
