@@ -17,6 +17,7 @@ const PATCHES = [
   "patch-devtools.js",
   "patch-sunset.js",
   "patch-fast-mode.js",
+  "patch-plugin-login.js",
   "patch-connections.js",
   "patch-statsig-logger.js",
 ];
